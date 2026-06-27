@@ -1,0 +1,90 @@
+// DotQuot books API
+
+export default async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET");
+
+  if (req.method !== "GET") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const token = process.env.AIRTABLE_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID;
+  const tableName = process.env.AIRTABLE_BOOKS_TABLE || "Books";
+
+  if (!token || !baseId) {
+    return res.status(500).json({
+      error: "Missing Airtable environment variables"
+    });
+  }
+
+  try {
+    const records = [];
+    let offset = "";
+
+    do {
+      const params = new URLSearchParams({
+        view: "Published Books",
+        pageSize: "100"
+      });
+
+      if (offset) {
+        params.append("offset", offset);
+      }
+
+      const airtableUrl = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(
+        tableName
+      )}?${params.toString()}`;
+
+      const response = await fetch(airtableUrl, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return res.status(response.status).json({
+          error: "Airtable request failed",
+          details: errorText
+        });
+      }
+
+      const data = await response.json();
+
+      records.push(...data.records);
+      offset = data.offset;
+    } while (offset);
+
+    const books = records.map((record) => {
+      const fields = record.fields || {};
+      const cover = Array.isArray(fields["Book Cover"]) && fields["Book Cover"].length > 0
+        ? fields["Book Cover"][0]
+        : null;
+
+      return {
+        id: record.id,
+        title: fields["Book Title"] || "",
+        author: fields["Author"] || "",
+        category: fields["Category"] || "",
+        shortDescription: fields["Short Description"] || "",
+        affiliateUrl: fields["Amazon Affiliate Link"] || "",
+        coverUrl: cover ? cover.url : null,
+        coverFilename: cover ? cover.filename : null,
+        isTrending: fields["Is Trending"] || false,
+        sortOrder: fields["Sort Order"] || 0
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: books.length,
+      books
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: "Server error",
+      message: error.message
+    });
+  }
+}
