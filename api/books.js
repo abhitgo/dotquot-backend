@@ -71,6 +71,8 @@ export default async function handler(req, res) {
         affiliateUrl: fields["Amazon Affiliate Link"] || "",
         coverUrl: cover ? cover.url : null,
         coverFilename: cover ? cover.filename : null,
+        iconName: fields["Icon Name"] || null,
+        cardStyle: fields["Card Style"] || null,
         isTrending: fields["Is Trending"] || false,
         sortOrder: fields["Sort Order"] || 0
       };
