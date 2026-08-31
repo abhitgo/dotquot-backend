@@ -8,52 +8,67 @@ export default async function handler(req, res) {
   }
 
   const token = process.env.AIRTABLE_TOKEN;
-  const baseId = process.env.AIRTABLE_BASE_ID;
+  const baseIds = [
+    process.env.AIRTABLE_BASE_ID,
+    process.env.AIRTABLE_BASE_ID_2
+  ].filter(Boolean);
   const tableName = process.env.AIRTABLE_QUOTES_TABLE || "Quotes";
 
-  if (!token || !baseId) {
+  if (!token || baseIds.length === 0) {
     return res.status(500).json({
       error: "Missing Airtable environment variables"
     });
   }
 
   try {
-    const records = [];
-    let offset = "";
+    const fetchBaseRecords = async (baseId) => {
+      const records = [];
+      let offset = "";
 
-    do {
-      const params = new URLSearchParams({
-        view: "Published Quotes",
-        pageSize: "100"
-      });
-
-      if (offset) {
-        params.append("offset", offset);
-      }
-
-      const airtableUrl = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(
-        tableName
-      )}?${params.toString()}`;
-
-      const response = await fetch(airtableUrl, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        return res.status(response.status).json({
-          error: "Airtable request failed",
-          details: errorText
+      do {
+        const params = new URLSearchParams({
+          filterByFormula: "{Is Published}=TRUE()",
+          pageSize: "100"
         });
-      }
+        params.append("sort[0][field]", "Sort Order");
+        params.append("sort[0][direction]", "asc");
 
-      const data = await response.json();
+        if (offset) {
+          params.append("offset", offset);
+        }
 
-      records.push(...data.records);
-      offset = data.offset;
-    } while (offset);
+        const airtableUrl = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(
+          tableName
+        )}?${params.toString()}`;
+
+        const response = await fetch(airtableUrl, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`Airtable request failed for ${baseId}: ${response.status}`);
+        }
+
+        const data = await response.json();
+        records.push(...data.records);
+        offset = data.offset || "";
+      } while (offset);
+
+      return records;
+    };
+
+    const results = await Promise.allSettled(baseIds.map(fetchBaseRecords));
+    const successfulResults = results.filter(
+      (result) => result.status === "fulfilled"
+    );
+
+    if (successfulResults.length === 0) {
+      throw new Error("All Airtable catalogue requests failed");
+    }
+
+    const records = successfulResults.flatMap((result) => result.value);
 
     const quotes = records.map((record) => {
       const fields = record.fields || {};
@@ -71,6 +86,12 @@ export default async function handler(req, res) {
             : null,
         createdDate: fields["Created Date"] || null
       };
+    }).sort((a, b) => {
+      if (a.sortOrder !== b.sortOrder) {
+        return a.sortOrder - b.sortOrder;
+      }
+
+      return (a.createdDate || "").localeCompare(b.createdDate || "");
     });
 
     res.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
