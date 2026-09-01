@@ -92,6 +92,22 @@ export default async function handler(req, res) {
       }
 
       return (a.createdDate || "").localeCompare(b.createdDate || "");
+    }).filter((quote) => quote.text.trim().length > 0);
+
+    const seenQuoteTexts = new Set();
+    const uniqueQuotes = quotes.filter((quote) => {
+      const normalizedText = quote.text
+        .normalize("NFKC")
+        .trim()
+        .replace(/\s+/g, " ")
+        .toLowerCase();
+
+      if (seenQuoteTexts.has(normalizedText)) {
+        return false;
+      }
+
+      seenQuoteTexts.add(normalizedText);
+      return true;
     });
 
     res.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
@@ -102,8 +118,8 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       success: true,
-      count: quotes.length,
-      quotes
+      count: uniqueQuotes.length,
+      quotes: uniqueQuotes
     });
   } catch (error) {
     return res.status(500).json({
