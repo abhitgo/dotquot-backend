@@ -1,0 +1,14 @@
+{
+  "name": "dotquot-backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@vercel/functions": "3.9.5"
+  }
+}

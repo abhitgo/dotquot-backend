@@ -1,4 +1,52 @@
+import { getCache } from "@vercel/functions";
+
 // DotQuot quotes API
+const CACHE_TTL_SECONDS = 72 * 60 * 60;
+const STALE_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+function setSuccessCacheHeaders(res) {
+  const sharedCachePolicy = [
+    "public",
+    `max-age=${CACHE_TTL_SECONDS}`,
+    `stale-while-revalidate=${STALE_TTL_SECONDS}`,
+    `stale-if-error=${STALE_TTL_SECONDS}`
+  ].join(", ");
+
+  res.setHeader("Cache-Control", sharedCachePolicy);
+  res.setHeader("CDN-Cache-Control", sharedCachePolicy);
+  res.setHeader("Vercel-CDN-Cache-Control", sharedCachePolicy);
+}
+
+async function readCachedPayload(cacheKey) {
+  try {
+    const cachedPayload = await getCache().get(cacheKey);
+
+    if (
+      cachedPayload?.success === true &&
+      Array.isArray(cachedPayload.quotes) &&
+      cachedPayload.quotes.length > 0
+    ) {
+      return cachedPayload;
+    }
+  } catch (error) {
+    console.warn("Unable to read the shared quote cache:", error.message);
+  }
+
+  return null;
+}
+
+async function writeCachedPayload(cacheKey, payload) {
+  try {
+    await getCache().set(cacheKey, payload, {
+      name: "DotQuot quote catalogue",
+      ttl: CACHE_TTL_SECONDS,
+      tags: ["dotquot-quotes"]
+    });
+  } catch (error) {
+    console.warn("Unable to update the shared quote cache:", error.message);
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET");
@@ -21,6 +69,14 @@ export default async function handler(req, res) {
   }
 
   try {
+    const cacheKey = `dotquot-quotes-v1:${baseIds.join(":")}:${tableName}`;
+    const cachedPayload = await readCachedPayload(cacheKey);
+
+    if (cachedPayload) {
+      setSuccessCacheHeaders(res);
+      return res.status(200).json(cachedPayload);
+    }
+
     const fetchBaseRecords = async (baseId) => {
       const records = [];
       let offset = "";
@@ -110,17 +166,15 @@ export default async function handler(req, res) {
       return true;
     });
 
-    res.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
-    res.setHeader(
-      "Vercel-CDN-Cache-Control",
-      "public, max-age=259200, stale-while-revalidate=604800, stale-if-error=604800"
-    );
-
-    return res.status(200).json({
+    const payload = {
       success: true,
       count: uniqueQuotes.length,
       quotes: uniqueQuotes
-    });
+    };
+
+    await writeCachedPayload(cacheKey, payload);
+    setSuccessCacheHeaders(res);
+    return res.status(200).json(payload);
   } catch (error) {
     return res.status(500).json({
       error: "Server error",
