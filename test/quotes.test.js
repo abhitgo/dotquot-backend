@@ -22,7 +22,7 @@ function makeResponse() {
   };
 }
 
-test("reuses the shared quote payload for 72 hours", async (t) => {
+test("reuses the shared quote payload for seven days", async (t) => {
   const originalFetch = globalThis.fetch;
   const originalEnvironment = {
     AIRTABLE_TOKEN: process.env.AIRTABLE_TOKEN,
@@ -79,7 +79,7 @@ test("reuses the shared quote payload for 72 hours", async (t) => {
   assert.equal(firstResponse.statusCode, 200);
   assert.equal(firstResponse.body.count, 2);
   assert.equal(airtableRequestCount, 2);
-  assert.match(firstResponse.headers["Cache-Control"], /max-age=259200/);
+  assert.match(firstResponse.headers["Cache-Control"], /max-age=604800/);
   assert.doesNotMatch(firstResponse.headers["Cache-Control"], /must-revalidate/);
 
   const secondResponse = makeResponse();

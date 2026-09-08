@@ -1,7 +1,7 @@
 import { getCache } from "@vercel/functions";
 
 // DotQuot quotes API
-const CACHE_TTL_SECONDS = 72 * 60 * 60;
+const CACHE_TTL_SECONDS = 7 * 24 * 60 * 60;
 const STALE_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 function setSuccessCacheHeaders(res) {
